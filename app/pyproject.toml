@@ -1,14 +1,16 @@
 [project]
-name = "quickstart"
-version = "0.0.2"
-description = "BlueOS QuickStart Example Extension"
+name = "ardusub-pymavlink-control"
+version = "0.0.1"
+description = "BlueOS ArduSub PyMavlink Control Extension"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "flask",
+    "pymavlink",
     "requests",
-    "litestar[standard]",
+    "flask-cors",
 ]
 
