@@ -9,7 +9,7 @@ LABEL permissions='\
     "8000/tcp": {}\
   },\
   "HostConfig": {\
-    "Binds":["/usr/blueos/extensions/ardusub-pymavlink-control:/app"],\
+    "Binds":["/usr/blueos/extensions/ardusub-pymavlink-control:/app/logs"],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
       "8000/tcp": [\
@@ -62,4 +62,4 @@ ENV FLASK_ENV=production
 ENV FLASK_RUN_PORT=8000
 
 # Debug startup command to see what's in the container at runtime
-CMD ["sh", "-c", "echo '=== Runtime Debug ===' && pwd && ls -la && echo '=== Starting main.py ===' && python main.py"]
+CMD ["sh", "-c", "echo '=== Runtime Debug ===' && pwd && ls -la && echo '=== BlueOS mount point ===' && ls -la /blueos/ && echo '=== Starting main.py ===' && python main.py"]
