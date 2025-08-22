@@ -32,12 +32,8 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY app/ .
+# Install Python dependencies (requirements.txt will be provided by bind mount)
+RUN pip install --no-cache-dir flask pymavlink flask-cors requests
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -50,5 +46,5 @@ ENV FLASK_APP=main.py
 ENV FLASK_ENV=production
 ENV FLASK_RUN_PORT=8000
 
-# Run the application on port 8000
-CMD ["python", "-c", "import os; os.environ['FLASK_RUN_PORT']='8000'; exec(open('main.py').read())"]
+# Simple CMD to run the application (files provided by BlueOS bind mount)
+CMD ["python", "main.py"]
