@@ -74,6 +74,7 @@ docker push <your-dockerhub-username>/ardusub-pymavlink-control
 #### Heading Control
 - Enter target heading in degrees (0-359)
 - Click "Go!" to send heading command
+- **Note**: Heading control is only available when vehicle is in ALT_HOLD mode
 
 #### Movement Control
 - Set translation throttle (0.0-1.0) - controls movement intensity
@@ -102,18 +103,20 @@ docker push <your-dockerhub-username>/ardusub-pymavlink-control
 - `POST /api/move` - Send movement command
 - `POST /api/set_depth` - Set target depth
 - `POST /api/set_heading` - Set target heading
+- `POST /api/set_attitude` - Set target attitude (roll, pitch, yaw)
 - `POST /api/disconnect` - Disconnect from vehicle
 
 ## Technical Details
 
 ### MAVLink Commands Used
 
-- **Heartbeat Monitoring**: Continuous monitoring of vehicle heartbeat
-- **Arm/Disarm**: `MAV_CMD_COMPONENT_ARM_DISARM`
-- **Mode Setting**: `MAV_CMD_DO_SET_MODE`
+- **Heartbeat Monitoring**: Continuous monitoring of vehicle heartbeat using proper bitmask `0b10000000`
+- **Arm/Disarm**: `arducopter_arm()` method for proper vehicle arming
+- **Mode Setting**: `set_mode('ALT_HOLD')` for mode changes
 - **Manual Control**: `MANUAL_CONTROL` messages for movement
-- **Depth Control**: `MAV_CMD_DO_SET_ROI_LOCATION`
-- **Heading Control**: `MAV_CMD_CONDITION_YAW`
+- **Depth Control**: `set_position_target_global_int_send` with proper type mask constants (exactly matches [ArduSub documentation](https://www.ardusub.com/developers/pymavlink.html#set-target-depthattitude))
+- **Heading Control**: `set_attitude_target_send` with quaternion-based attitude control (ALT_HOLD mode only)
+- **Attitude Control**: Full 3-axis attitude control (roll, pitch, yaw) using `set_attitude_target_send`
 
 ### Connection Details
 

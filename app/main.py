@@ -6,6 +6,8 @@ import threading
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from pymavlink import mavutil
+from pymavlink.quaternion import QuaternionBase
+import math
 import requests
 import os
 
@@ -24,9 +26,13 @@ class ArduSubController:
         self.heartbeat_received = False
         self.connection_thread = None
         self.running = False
+        self.boot_time = time.time()  # Track boot time for MAVLink messages
         
         # Mavlink2Rest configuration
         self.mavlink2rest_url = "http://host.docker.internal/mavlink2rest/mavlink"
+        
+        # Constants
+        self.ALT_HOLD_MODE = 2
         
     def connect_to_vehicle(self):
         """Connect to the ArduSub vehicle via MAVLink"""
@@ -59,9 +65,9 @@ class ArduSubController:
                             logger.info("Heartbeat received from vehicle!")
                             self.heartbeat_received = True
                         
-                        # Update vehicle status
-                        self.vehicle_armed = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-                        self.vehicle_mode = mavutil.mavlink.enums['MAV_MODE_FLAG'].get(self.vehicle_mode, 'UNKNOWN')
+                        # Update vehicle status using proper bitmask
+                        self.vehicle_armed = bool(msg.base_mode & 0b10000000)  # MAV_MODE_FLAG_SAFETY_ARMED
+                        self.vehicle_mode = msg.custom_mode
                         
                 time.sleep(0.1)
             except Exception as e:
@@ -75,23 +81,39 @@ class ArduSubController:
             time.sleep(0.1)
         return self.heartbeat_received
     
+    def is_armed(self):
+        """Check if vehicle is armed using proper bitmask"""
+        try:
+            if self.mavlink_connection:
+                heartbeat = self.mavlink_connection.wait_heartbeat()
+                return bool(heartbeat.base_mode & 0b10000000)
+            return False
+        except:
+            return False
+    
+    def mode_is(self, mode):
+        """Check if vehicle is in specific mode"""
+        try:
+            if self.mavlink_connection:
+                heartbeat = self.mavlink_connection.wait_heartbeat()
+                return bool(heartbeat.custom_mode == mode)
+            return False
+        except:
+            return False
+    
     def arm_vehicle(self):
         """Arm the vehicle"""
         if not self.mavlink_connection or not self.heartbeat_received:
             return False, "No connection to vehicle"
         
         try:
-            # Send arm command
-            self.mavlink_connection.mav.command_long_send(
-                self.mavlink_connection.target_system,
-                self.mavlink_connection.target_component,
-                mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-                0, 1, 0, 0, 0, 0, 0, 0
-            )
+            # Use the proper arming method
+            self.mavlink_connection.arducopter_arm()
             
             # Wait for arm confirmation
             time.sleep(2)
-            return self.vehicle_armed, "Vehicle armed successfully" if self.vehicle_armed else "Failed to arm vehicle"
+            armed = self.is_armed()
+            return armed, "Vehicle armed successfully" if armed else "Failed to arm vehicle"
         except Exception as e:
             logger.error(f"Arm command failed: {e}")
             return False, f"Arm command failed: {e}"
@@ -102,12 +124,8 @@ class ArduSubController:
             return False, "No connection to vehicle"
         
         try:
-            # Set mode to ALT_HOLD
-            self.mavlink_connection.mav.set_mode_send(
-                self.mavlink_connection.target_system,
-                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-                self.mavlink_connection.mode_mapping()[mode_name]
-            )
+            # Set mode using proper method
+            self.mavlink_connection.set_mode('ALT_HOLD')
             
             time.sleep(1)
             return True, f"Mode set to {mode_name}"
@@ -164,17 +182,39 @@ class ArduSubController:
             return False, f"Movement command failed: {e}"
     
     def set_target_depth(self, depth):
-        """Set target depth for the vehicle"""
+        """Set target depth for the vehicle using proper MAVLink command
+        Based on official ArduSub documentation
+        """
         if not self.mavlink_connection or not self.heartbeat_received:
             return False, "No connection to vehicle"
         
         try:
-            # Send depth command
-            self.mavlink_connection.mav.command_long_send(
-                self.mavlink_connection.target_system,
+            # Use set_position_target_global_int_send for depth control
+            # Based on the official ArduSub documentation
+            self.mavlink_connection.mav.set_position_target_global_int_send(
+                int(1e3 * (time.time() - self.boot_time)),  # ms since boot
+                self.mavlink_connection.target_system, 
                 self.mavlink_connection.target_component,
-                mavutil.mavlink.MAV_CMD_DO_SET_ROI_LOCATION,
-                0, 0, 0, 0, 0, 0, 0, depth
+                coordinate_frame=mavutil.mavlink.MAV_FRAME_GLOBAL_INT,
+                type_mask=( # ignore everything except z position
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE |
+                    # DON'T mavutil.mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE |
+                    # DON'T mavutil.mavlink.POSITION_TARGET_TYPEMASK_FORCE_SET |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE |
+                    mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+                ), 
+                lat_int=0, lon_int=0, alt=depth,  # (x, y WGS84 frame pos - not used), z [m]
+                vx=0, vy=0, vz=0,  # velocities in NED frame [m/s] (not used)
+                afx=0, afy=0, afz=0, yaw=0, yaw_rate=0
+                # accelerations in NED frame [N], yaw, yaw_rate
+                #  (all not supported yet, ignored in GCS Mavlink)
             )
             
             return True, f"Target depth set to {depth} meters"
@@ -182,22 +222,57 @@ class ArduSubController:
             logger.error(f"Depth command failed: {e}")
             return False, f"Depth command failed: {e}"
     
-    def set_target_heading(self, heading):
-        """Set target heading for the vehicle"""
+    def set_target_attitude(self, roll, pitch, yaw):
+        """Set target attitude while in depth-hold mode
+        Based on official ArduSub documentation
+        """
         if not self.mavlink_connection or not self.heartbeat_received:
             return False, "No connection to vehicle"
         
+        # Only allow attitude control in ALT_HOLD mode
+        if not self.mode_is(self.ALT_HOLD_MODE):
+            return False, "Attitude control only available in ALT_HOLD mode"
+        
         try:
-            # Send heading command
-            self.mavlink_connection.mav.command_long_send(
-                self.mavlink_connection.target_system,
+            # Use set_attitude_target_send for attitude control
+            # Based on the official ArduSub documentation
+            self.mavlink_connection.mav.set_attitude_target_send(
+                int(1e3 * (time.time() - self.boot_time)),  # ms since boot
+                self.mavlink_connection.target_system, 
                 self.mavlink_connection.target_component,
-                mavutil.mavlink.MAV_CMD_CONDITION_YAW,
-                heading,  # Target angle
-                25,       # Angular speed (deg/s)
-                1,        # Direction (-1:ccw, 1:cw)
-                0,        # Relative offset
-                0, 0, 0
+                # allow throttle to be controlled by depth_hold mode
+                mavutil.mavlink.ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE,
+                # -> attitude quaternion (w, x, y, z | zero-rotation is 1, 0, 0, 0)
+                QuaternionBase([math.radians(angle) for angle in (roll, pitch, yaw)]),
+                0, 0, 0, 0  # roll rate, pitch rate, yaw rate, thrust
+            )
+            
+            return True, f"Target attitude set to roll={roll}°, pitch={pitch}°, yaw={yaw}°"
+        except Exception as e:
+            logger.error(f"Attitude command failed: {e}")
+            return False, f"Attitude command failed: {e}"
+    
+    def set_target_heading(self, heading):
+        """Set target heading for the vehicle using proper MAVLink command"""
+        if not self.mavlink_connection or not self.heartbeat_received:
+            return False, "No connection to vehicle"
+        
+        # Only allow heading control in ALT_HOLD mode
+        if not self.mode_is(self.ALT_HOLD_MODE):
+            return False, "Heading control only available in ALT_HOLD mode"
+        
+        try:
+            # Use set_attitude_target_send for heading control (yaw only)
+            # Based on the official ArduSub documentation
+            self.mavlink_connection.mav.set_attitude_target_send(
+                int(1e3 * (time.time() - self.boot_time)),  # ms since boot
+                self.mavlink_connection.target_system, 
+                self.mavlink_connection.target_component,
+                # allow throttle to be controlled by depth_hold mode
+                mavutil.mavlink.ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE,
+                # -> attitude quaternion (w, x, y, z | zero-rotation is 1, 0, 0, 0)
+                QuaternionBase([0, 0, math.radians(heading)]),  # roll=0, pitch=0, yaw=heading
+                0, 0, 0, 0  # roll rate, pitch rate, yaw rate, thrust
             )
             
             return True, f"Target heading set to {heading} degrees"
@@ -409,6 +484,19 @@ def set_heading():
         data = request.get_json()
         heading = data.get('heading')
         success, message = controller.set_target_heading(heading)
+        return jsonify({'success': True, 'message': message})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/set_attitude', methods=['POST'])
+def set_attitude():
+    """Set target attitude (roll, pitch, yaw)"""
+    try:
+        data = request.get_json()
+        roll = data.get('roll', 0)
+        pitch = data.get('pitch', 0)
+        yaw = data.get('yaw', 0)
+        success, message = controller.set_target_attitude(roll, pitch, yaw)
         return jsonify({'success': True, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
