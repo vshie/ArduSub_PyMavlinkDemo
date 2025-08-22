@@ -32,13 +32,23 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements and install Python dependencies
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 # Copy application files explicitly to ensure they're in the right place
 COPY app/main.py .
 COPY app/static/ ./static/
 
-# Copy requirements and install Python dependencies
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Debug: Show what's actually in the container
+RUN echo "=== Container contents after copying ===" && \
+    pwd && \
+    echo "--- Root directory ---" && \
+    ls -la && \
+    echo "--- Static directory ---" && \
+    ls -la static/ && \
+    echo "--- main.py details ---" && \
+    ls -la main.py
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -51,5 +61,5 @@ ENV FLASK_APP=main.py
 ENV FLASK_ENV=production
 ENV FLASK_RUN_PORT=8000
 
-# Simple CMD to run the application
-CMD ["python", "main.py"]
+# Debug startup command to see what's in the container at runtime
+CMD ["sh", "-c", "echo '=== Runtime Debug ===' && pwd && ls -la && echo '=== Starting main.py ===' && python main.py"]
