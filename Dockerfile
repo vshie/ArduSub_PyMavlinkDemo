@@ -32,12 +32,13 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy application files explicitly to ensure they're in the right place
+COPY app/main.py .
+COPY app/static/ ./static/
+
 # Copy requirements and install Python dependencies
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code into the container
-COPY app/ .
 
 # Create logs directory
 RUN mkdir -p /app/logs
