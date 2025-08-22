@@ -25,6 +25,9 @@ class ArduSubController:
         self.connection_thread = None
         self.running = False
         
+        # Mavlink2Rest configuration
+        self.mavlink2rest_url = "http://host.docker.internal/mavlink2rest/mavlink"
+        
     def connect_to_vehicle(self):
         """Connect to the ArduSub vehicle via MAVLink"""
         try:
@@ -202,6 +205,95 @@ class ArduSubController:
             logger.error(f"Heading command failed: {e}")
             return False, f"Heading command failed: {e}"
     
+    def get_vehicle_metrics(self):
+        """Get real-time vehicle metrics using Mavlink2Rest"""
+        try:
+            # Get vehicle arm state
+            arm_response = requests.get(f"{self.mavlink2rest_url}/vehicles/1/components/1/HEARTBEAT", timeout=2)
+            if arm_response.status_code == 200:
+                arm_data = arm_response.json()
+                armed = bool(arm_data.get('message', {}).get('base_mode', 0) & 0x80)  # MAV_MODE_FLAG_SAFETY_ARMED
+            else:
+                armed = False
+            
+            # Get current depth
+            depth_response = requests.get(f"{self.mavlink2rest_url}/vehicles/1/components/1/VFR_HUD", timeout=2)
+            if depth_response.status_code == 200:
+                depth_data = depth_response.json()
+                current_depth = depth_data.get('message', {}).get('alt', 0)
+            else:
+                current_depth = 0
+            
+            # Get current heading
+            heading_response = requests.get(f"{self.mavlink2rest_url}/vehicles/1/components/1/VFR_HUD", timeout=2)
+            if heading_response.status_code == 200:
+                heading_data = heading_response.json()
+                current_heading = heading_data.get('message', {}).get('heading', 0)
+            else:
+                current_heading = 0
+            
+            # Get vehicle mode
+            mode_response = requests.get(f"{self.mavlink2rest_url}/vehicles/1/components/1/HEARTBEAT", timeout=2)
+            if mode_response.status_code == 200:
+                mode_data = mode_response.json()
+                custom_mode = mode_data.get('message', {}).get('custom_mode', 0)
+                # Map custom mode to readable mode name
+                mode_name = self._get_mode_name(custom_mode)
+            else:
+                mode_name = "Unknown"
+            
+            return {
+                'armed': armed,
+                'current_depth': round(current_depth, 2),
+                'current_heading': int(current_heading),
+                'mode': mode_name,
+                'timestamp': time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get vehicle metrics: {e}")
+            return {
+                'armed': False,
+                'current_depth': 0,
+                'current_heading': 0,
+                'mode': "Unknown",
+                'timestamp': time.time()
+            }
+    
+    def _get_mode_name(self, custom_mode):
+        """Convert custom mode number to readable mode name"""
+        # Common ArduSub modes
+        mode_mapping = {
+            0: "MANUAL",
+            1: "STABILIZE", 
+            2: "ALT_HOLD",
+            3: "AUTO",
+            4: "GUIDED",
+            5: "LOITER",
+            6: "RTL",
+            7: "CIRCLE",
+            8: "POSITION",
+            9: "LAND",
+            10: "OF_LOITER",
+            11: "DRIFT",
+            13: "SPORT",
+            14: "FLIP",
+            15: "AUTOTUNE",
+            16: "POSHOLD",
+            17: "BRAKE",
+            18: "THROW",
+            19: "AVOID_ADSB",
+            20: "GUIDED_NOGPS",
+            21: "SMART_RTL",
+            22: "FLOWHOLD",
+            23: "FOLLOW",
+            24: "ZIGZAG",
+            25: "SYSTEMID",
+            26: "AUTOROTATE",
+            27: "AUTO_RTL"
+        }
+        return mode_mapping.get(custom_mode, f"Mode_{custom_mode}")
+    
     def get_status(self):
         """Get current vehicle status"""
         return {
@@ -243,6 +335,15 @@ def connect():
 def status():
     """Get vehicle status"""
     return jsonify(controller.get_status())
+
+@app.route('/api/vehicle_metrics')
+def vehicle_metrics():
+    """Get real-time vehicle metrics via Mavlink2Rest"""
+    try:
+        metrics = controller.get_vehicle_metrics()
+        return jsonify({'success': True, 'data': metrics})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/api/wait_heartbeat', methods=['POST'])
 def wait_heartbeat():
@@ -322,4 +423,5 @@ def disconnect():
         return jsonify({'success': False, 'message': str(e)})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get('FLASK_RUN_PORT', 8000))
+    app.run(host='0.0.0.0', port=port, debug=False)

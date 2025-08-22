@@ -4,10 +4,11 @@ services:
   ardusub-control:
     build: .
     ports:
-      - "5000:5000"
+      - "8000:8000"
     environment:
       - FLASK_APP=main.py
       - FLASK_ENV=development
+      - FLASK_RUN_PORT=8000
     volumes:
       - ./app:/app
     restart: unless-stopped

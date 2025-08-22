@@ -36,7 +36,7 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "🔧 To test locally, run:"
-    echo "   docker run -p 5000:5000 $IMAGE_NAME:$VERSION"
+    echo "   docker run -p 8000:8000 $IMAGE_NAME:$VERSION"
     echo ""
     echo "   Or use docker-compose:"
     echo "   docker-compose up"

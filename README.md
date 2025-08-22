@@ -95,6 +95,7 @@ docker push <your-dockerhub-username>/ardusub-pymavlink-control
 
 - `POST /api/connect` - Connect to vehicle
 - `GET /api/status` - Get vehicle status
+- `GET /api/vehicle_metrics` - Get real-time vehicle metrics via Mavlink2Rest
 - `POST /api/wait_heartbeat` - Wait for vehicle heartbeat
 - `POST /api/arm` - Arm/disarm vehicle
 - `POST /api/set_mode` - Set vehicle mode
@@ -119,6 +120,18 @@ docker push <your-dockerhub-username>/ardusub-pymavlink-control
 - **Protocol**: MAVLink over UDP
 - **Port**: 14550 (standard ArduSub MAVLink port)
 - **Address**: 0.0.0.0 (listens on all interfaces)
+
+### Mavlink2Rest Integration
+
+The extension integrates with BlueOS's Mavlink2Rest service to provide real-time vehicle metrics:
+
+- **Current Depth**: Real-time depth reading from vehicle sensors
+- **Current Heading**: Live heading/compass data
+- **Arm State**: Current armed/disarmed status
+- **Flight Mode**: Active vehicle mode (ALT_HOLD, MANUAL, etc.)
+- **Auto-update**: Metrics refresh every 500ms for real-time display
+
+This provides a comprehensive view of the vehicle's current state without requiring direct MAVLink connection management.
 
 ### Safety Considerations
 
@@ -167,7 +180,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-3. Access the interface at `http://localhost:5000`
+3. Access the interface at `http://localhost:8000`
 
 ### Building and Testing
 
@@ -178,7 +191,7 @@ docker build -t ardusub-pymavlink-control .
 
 2. Test locally:
 ```bash
-docker run -p 5000:5000 ardusub-pymavlink-control
+docker run -p 8000:8000 ardusub-pymavlink-control
 ```
 
 ## Contributing

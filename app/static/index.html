@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+    <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ArduSub PyMavlink Control</title>
@@ -87,6 +87,37 @@
             font-size: 1.2em;
             font-weight: 700;
             margin-top: 5px;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        
+        .metric-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .metric-value {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #2c3e50;
         }
         
         .control-section {
@@ -283,13 +314,29 @@
                             <div class="status-label">Heartbeat</div>
                             <div class="status-value">{{ status.heartbeat ? 'Received' : 'Waiting' }}</div>
                         </div>
-                        <div class="status-item" :class="{ armed: status.armed, disarmed: !status.armed }">
+                        <div class="status-item" :class="{ armed: vehicleMetrics.armed, disarmed: !vehicleMetrics.armed }">
                             <div class="status-label">Armed</div>
-                            <div class="status-value">{{ status.armed ? 'Armed' : 'Disarmed' }}</div>
+                            <div class="status-value">{{ vehicleMetrics.armed ? 'Armed' : 'Disarmed' }}</div>
                         </div>
                         <div class="status-item">
                             <div class="status-label">Mode</div>
-                            <div class="status-value">{{ status.mode || 'Unknown' }}</div>
+                            <div class="status-value">{{ vehicleMetrics.mode || 'Unknown' }}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Real-time Vehicle Metrics -->
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <div class="metric-label">Current Depth</div>
+                            <div class="metric-value">{{ vehicleMetrics.current_depth }} m</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Current Heading</div>
+                            <div class="metric-value">{{ vehicleMetrics.current_heading }}°</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Last Update</div>
+                            <div class="metric-value">{{ formatTimestamp(vehicleMetrics.timestamp) }}</div>
                         </div>
                     </div>
                     
@@ -428,6 +475,13 @@
                         armed: false,
                         mode: null
                     },
+                    vehicleMetrics: {
+                        armed: false,
+                        current_depth: 0,
+                        current_heading: 0,
+                        mode: 'Unknown',
+                        timestamp: 0
+                    },
                     controls: {
                         targetDepth: 5,
                         targetHeading: 0,
@@ -436,7 +490,8 @@
                     },
                     loading: false,
                     messageLog: [],
-                    statusInterval: null
+                    statusInterval: null,
+                    metricsInterval: null
                 }
             },
             
@@ -447,6 +502,9 @@
             beforeUnmount() {
                 if (this.statusInterval) {
                     clearInterval(this.statusInterval);
+                }
+                if (this.metricsInterval) {
+                    clearInterval(this.metricsInterval);
                 }
             },
             
@@ -587,12 +645,12 @@
                         const response = await fetch('/api/move', { 
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
+                    body: JSON.stringify({
                                 direction: direction,
                                 throttle: parseFloat(this.controls.throttle),
                                 duration: parseFloat(this.controls.duration)
-                            })
-                        });
+                    })
+                });
                         const data = await response.json();
                         
                         if (data.success) {
@@ -645,13 +703,36 @@
                     }
                 },
                 
+                async updateVehicleMetrics() {
+                    try {
+                        const response = await fetch('/api/vehicle_metrics');
+                        const data = await response.json();
+                        if (data.success) {
+                            this.vehicleMetrics = data.data;
+                        }
+                    } catch (error) {
+                        // Silently handle metrics update errors
+                    }
+                },
+                
                 startStatusPolling() {
                     this.statusInterval = setInterval(() => {
                         this.updateStatus();
                     }, 1000);
+                    
+                    // Start vehicle metrics polling
+                    this.metricsInterval = setInterval(() => {
+                        this.updateVehicleMetrics();
+                    }, 500); // Update metrics more frequently
+                }
+                
+                formatTimestamp(timestamp) {
+                    if (!timestamp) return 'Never';
+                    const date = new Date(timestamp * 1000);
+                    return date.toLocaleTimeString();
                 }
             }
         }).mount('#app');
-    </script>
-</body>
+        </script>
+    </body>
 </html>
