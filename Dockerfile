@@ -11,9 +11,6 @@ WORKDIR /app
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create app directory structure
-RUN mkdir -p /app/logs
-
 # Copy application files to the created structure
 COPY app/ .
 
@@ -25,6 +22,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Expose port
 EXPOSE 8000
 
@@ -33,7 +33,7 @@ ENV FLASK_APP=main.py
 ENV FLASK_ENV=production
 ENV FLASK_RUN_PORT=8000
 
-# BlueOS permissions label (near the end like NMEA-handler)
+# BlueOS permissions label (near the end like working extensions)
 LABEL permissions='\
 {\
   "HostConfig": {\
