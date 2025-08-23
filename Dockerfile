@@ -3,11 +3,39 @@ FROM python:3.11-slim
 # BlueOS Extension metadata labels
 LABEL version="0.0.1"
 LABEL type="extension"
+LABEL requirements="core >= 1.1"
+
+WORKDIR /app
+
+# Install Python dependencies first
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create app directory structure
+RUN mkdir -p /app/logs
+
+# Copy application files to the created structure
+COPY app/ .
+
+# Install system dependencies after copying files
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Expose port
+EXPOSE 8000
+
+# Set environment variables
+ENV FLASK_APP=main.py
+ENV FLASK_ENV=production
+ENV FLASK_RUN_PORT=8000
+
+# BlueOS permissions label (near the end like NMEA-handler)
 LABEL permissions='\
 {\
-  "ExposedPorts": {\
-    "8000/tcp": {}\
-  },\
   "HostConfig": {\
     "Binds":["/usr/blueos/extensions/ardusub-pymavlink-control:/app/logs"],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
@@ -18,37 +46,11 @@ LABEL permissions='\
         }\
       ]\
     }\
+  },\
+  "ExposedPorts": {\
+    "8000/tcp": {}\
   }\
 }'
-LABEL requirements="core >= 1.1"
-
-WORKDIR /app
-
-# Copy requirements and install Python dependencies
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application files
-COPY app/ .
-
-# Install system dependencies (matching videorecorder)
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create logs directory
-RUN mkdir -p /app/logs
-
-# Expose port
-EXPOSE 8000
-
-# Set environment variables
-ENV FLASK_APP=main.py
-ENV FLASK_ENV=production
-ENV FLASK_RUN_PORT=8000
 
 # Start command
 CMD ["python", "main.py"]
