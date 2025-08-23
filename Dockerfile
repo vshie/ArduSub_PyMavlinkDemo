@@ -1,18 +1,17 @@
 FROM python:3.11-slim
 
-# BlueOS Extension metadata labels
-LABEL version="0.0.1"
-LABEL type="extension"
-LABEL requirements="core >= 1.1"
+
 
 WORKDIR /app
+
+# Copy application files to the created structure
+COPY app /app
+# Create logs directory
+RUN mkdir -p /app/logs
 
 # Install Python dependencies first
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application files to the created structure
-COPY app/ .
 
 # Install system dependencies after copying files
 RUN apt-get update && apt-get install -y \
@@ -21,10 +20,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Create logs directory
-RUN mkdir -p /app/logs
-
 # Expose port
 EXPOSE 8000
 
@@ -32,6 +27,8 @@ EXPOSE 8000
 ENV FLASK_APP=main.py
 ENV FLASK_ENV=production
 ENV FLASK_RUN_PORT=8000
+
+ARG IMAGE_NAME
 
 # BlueOS permissions label (near the end like working extensions)
 LABEL permissions='\
@@ -52,5 +49,11 @@ LABEL permissions='\
   }\
 }'
 
+# BlueOS Extension metadata labels
+LABEL version="0.0.1"
+LABEL type="extension"
+LABEL requirements="core >= 1.1"
+
+WORKDIR /app
 # Start command
 CMD ["python", "main.py"]
